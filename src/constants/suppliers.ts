@@ -1,0 +1,39 @@
+import { Supplier, SupplierId } from '../types';
+
+export const SUPPLIERS_CONFIG: Record<SupplierId, Supplier> = {
+  nguyen: {
+    id: 'nguyen',
+    name: 'Nguyên',
+    badgeText: 'Nhà cung cấp Nguyên',
+    color: '#C93642',
+    lightBg: '#FDECEE',
+    textColor: '#8E1722',
+    borderColor: '#F7B4BB',
+    lastUpdated: 'Chưa có dữ liệu',
+    itemCount: 0,
+  },
+  ngoc: {
+    id: 'ngoc',
+    name: 'Ngọc',
+    badgeText: 'Nhà cung cấp Ngọc',
+    color: '#E06D10',
+    lightBg: '#FFF2E6',
+    textColor: '#A64805',
+    borderColor: '#F8C89F',
+    lastUpdated: 'Chưa có dữ liệu',
+    itemCount: 0,
+  },
+  nhung: {
+    id: 'nhung',
+    name: 'Nhung',
+    badgeText: 'Nhà cung cấp Nhung',
+    color: '#7B3FA8',
+    lightBg: '#F5ECFA',
+    textColor: '#58217E',
+    borderColor: '#D8B3F2',
+    lastUpdated: 'Chưa có dữ liệu',
+    itemCount: 0,
+  },
+};
+
+export const SUPPLIER_LIST: SupplierId[] = ['nguyen', 'ngoc', 'nhung'];
