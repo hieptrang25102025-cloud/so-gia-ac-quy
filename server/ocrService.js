@@ -1,12 +1,12 @@
 /**
  * AI OCR Service - Google Gemini Vision Multi-Page Processor
- * Extracts (batteryName, unitPrice) from Vietnamese battery price sheets (Enimac, GS, Troy, Dong Nai Pinaco, Rocket, etc.).
+ * Extracts (batteryName, capacityAh, unitPrice, brand) from Vietnamese battery price sheets (Enimac, GS, Troy, Dong Nai Pinaco, Rocket, etc.).
  * Designed for 100% complete row-by-row extraction without any truncation or fake fallbacks.
  */
 
 const CANDIDATE_MODELS = [
-  'gemini-3.1-flash-lite',
   'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
   'gemini-3.8-flash'
 ];
 
@@ -25,24 +25,44 @@ export async function processImagesWithGemini(imagesBase64, supplierId, userApiK
   const pageCount = imagesBase64.length;
 
   const systemInstruction = `Bạn là chuyên gia bóc tách dữ liệu bảng báo giá bình ắc quy hàng đầu tại Việt Nam (các hãng Enimac, Troy, GS, Đồng Nai Pinaco, Rocket, AtlasBX, v.v.).
-NHIỆM VỤ CỐT LÕI:
-Phân tích kỹ lưỡng TOÀN BỘ ${pageCount} trang ảnh bảng báo giá. Trích xuất ĐẦY ĐỦ 100% tất cả các dòng sản phẩm có trong hình ảnh, từ STT 1 đến dòng cuối cùng (kể cả bảng có 50, 56, 70 hay 100+ dòng). Tuyệt đối không được bỏ sót dòng nào.
 
-QUY TẮC BÓC TÁCH GIÁ BẮT BUỘC:
-1. TÊN BÌNH / MÃ BÌNH (batteryName):
-   - Lấy đúng tên sản phẩm tại cột "Chủng Loại" hoặc "Mã Bình" (Ví dụ: "N25 - 2 cọc", "N30 - 2 cọc", "N32 - 2 cọc", "N70", "NS40 R", "NS60 R/L (S)", "CMF 36B20R/L", "DIN45L", "EFB N55/65B24L", "EFB DIN80L LN4"...).
-   - Bỏ qua STT và các thông số kích thước, thông số dung lượng AH, Dài x Rộng x Cao.
-2. ĐƠN GIÁ (unitPrice):
-   - LUÔN LUÔN LẤY CỘT GIÁ CUỐI CÙNG HOẶC CỘT CÓ CHỮ "GIÁ NET" / "GIÁ NEX" (Giá bán sỉ / giá đại lý sau chiết khấu).
-   - Ví dụ: Nếu bảng giá có các cột "Giá bán (chưa VAT)", "Giá bán (CÓ VAT)", "Giá NET THÁNG 7" -> BẮT BUỘC PHẢI LẤY CỘT "Giá NET THÁNG 7" (CỘT NGOÀI CÙNG BÊN PHẢI).
-   - Tuyệt đối không lấy cột giá chưa VAT hay giá có VAT nếu bảng có cột Giá NET/Giá NEX/cột giá cuối cùng.
-   - Nếu bảng chỉ có duy nhất 1 cột đơn giá (ví dụ "ĐƠN GIÁ"), hãy lấy cột đó.
-   - Đơn giá phải là số nguyên (ví dụ: 593630, 656311, 722575, 1349378...). Bỏ dấu chấm, dấu phẩy, chữ đ.
-3. BÓC TÁCH ĐỦ 100%: Trong bảng có bao nhiêu dòng sản phẩm thì trích xuất đầy đủ bấy nhiêu dòng, không được dừng giữa chừng.
-4. Trả về DUY NHẤT một chuỗi JSON hợp lệ theo định dạng:
+NHIỆM VỤ CỐT LÕI:
+1. NHẬN BIẾT HÃNG SẢN XUẤT (brand):
+   - Đọc kỹ TIÊU ĐỀ, PHẦN ĐẦU hoặc LOGO của từng bảng giá/trang ảnh để nhận biết hãng:
+     * Tiêu đề có "ENIMAC", "BẢNG GIÁ ẮC ENIMAC", "ENIMAC - CMF"... -> brand: "Eni"
+     * Tiêu đề có "GS", "GIÁ ẮC QUY GS"... -> brand: "GS"
+     * Tiêu đề có "ĐỒNG NAI", "BẢNG GIÁ ẮC QUY ĐỒNG NAI", "PINACO"... -> brand: "ĐN"
+     * Nếu không chắc chắn hoặc không thấy tên hãng -> brand: null
+   - QUAN TRỌNG: KHÔNG ĐƯỢC TỰ ĐỘNG GHÉP ĐUÔI HÃNG VÀO TÊN BÌNH. Trường batteryName chỉ chứa tên gốc của bình. Việc ghép đuôi sẽ do hệ thống xử lý.
+
+2. BÓC TÁCH ĐỦ 100% CÁC DÒNG:
+   - Trích xuất toàn bộ tất cả các dòng sản phẩm từ STT 1 đến dòng cuối cùng (${pageCount} trang). Tuyệt đối không được bỏ sót dòng nào.
+
+3. TÊN BÌNH / MÃ BÌNH (batteryName):
+   - Lấy đúng tên sản phẩm tại cột "LOẠI BÌNH" hoặc "Chủng Loại" hoặc "Mã Bình" (Ví dụ: "CMF 36B20 R/L (Cọc nhỏ)", "CMF 46B24LS (Cọc lớn)", "MF 46B24LS (Cọc lớn)", "N50", "CMF 40B20"...).
+   - Giữ nguyên các ghi chú quan trọng trong ngoặc như "(Cọc nhỏ)", "(Cọc lớn)" nếu có trong tên loại bình.
+   - Bỏ qua STT và các thông số kích thước, Dài x Rộng x Cao.
+
+4. DUNG LƯỢNG (capacityAh):
+   - Lấy giá trị dung lượng từ cột "AH" nếu có (ví dụ: 35, 45, 50, 60, 100...).
+
+5. ĐƠN GIÁ (unitPrice):
+   - LUÔN LUÔN LẤY CỘT GIÁ CUỐI CÙNG HOẶC CỘT CÓ CHỮ "GIÁ NET" / "GIÁ NEX" (Giá bán sỉ sau chiết khấu).
+   - Nếu bảng chỉ có 1 cột đơn giá (ví dụ "ĐƠN GIÁ"), hãy lấy cột đó.
+   - Đơn giá là số nguyên không dấu chấm (ví dụ: 726000, 895000, 962000, 1010000, 827000, 958000...).
+
+Trả về DUY NHẤT một chuỗi JSON hợp lệ theo định dạng:
 {
+  "detectedBrand": "Eni",
   "items": [
-    { "batteryName": "N25 - 2 cọc", "unitPrice": 593630, "confidence": "high", "pageNumber": 1 }
+    {
+      "batteryName": "CMF 36B20 R/L (Cọc nhỏ)",
+      "capacityAh": 35,
+      "unitPrice": 726000,
+      "brand": "Eni",
+      "confidence": "high",
+      "pageNumber": 1
+    }
   ]
 }`;
 
@@ -68,7 +88,7 @@ QUY TẮC BÓC TÁCH GIÁ BẮT BUỘC:
     });
 
     contentsParts.push({
-      text: `Hãy đọc toàn bộ tất cả các dòng sản phẩm trong bảng báo giá cho nhà cung cấp "${supplierId}". Bóc tách Chủng Loại và Đơn giá (nhớ lấy cột Giá NET / Giá NEX hoặc cột giá cuối cùng bên phải). Trích xuất đủ 100% tất cả các dòng sản phẩm. Trả về JSON.`
+      text: `Hãy nhận diện hãng từ tiêu đề/đầu trang và bóc tách toàn bộ tất cả các dòng sản phẩm trong bảng báo giá cho nhà cung cấp "${supplierId}". Bóc tách LOẠI BÌNH, AH và Đơn giá (cột Giá NET / Giá NEX hoặc cột giá cuối cùng bên phải). Trả về JSON.`
     });
 
     let lastError = null;
@@ -115,21 +135,36 @@ QUY TẮC BÓC TÁCH GIÁ BẮT BUỘC:
 
         const parsedJson = JSON.parse(candidateText);
         const rawItems = parsedJson.items || parsedJson.products || [];
+        const pageDetectedBrand = parsedJson.detectedBrand || null;
 
         const formattedItems = rawItems
-          .map((item, idx) => ({
-            batteryName: (item.batteryName || item.name || '').trim(),
-            unitPrice: parseInt(String(item.unitPrice || item.price).replace(/[^0-9]/g, ''), 10) || 0,
-            confidence: item.confidence || 'high',
-            pageNumber: item.pageNumber || 1
-          }))
+          .map((item, idx) => {
+            const rawName = (item.batteryName || item.name || '').trim();
+            const brandVal = item.brand || pageDetectedBrand || null;
+            let capacity = null;
+            if (item.capacityAh !== undefined && item.capacityAh !== null) {
+              const numAh = parseInt(String(item.capacityAh).replace(/[^0-9]/g, ''), 10);
+              capacity = !isNaN(numAh) ? numAh : item.capacityAh;
+            }
+
+            return {
+              batteryName: rawName,
+              rawBatteryName: rawName,
+              brand: brandVal,
+              capacityAh: capacity,
+              unitPrice: parseInt(String(item.unitPrice || item.price).replace(/[^0-9]/g, ''), 10) || 0,
+              confidence: item.confidence || 'high',
+              pageNumber: item.pageNumber || 1
+            };
+          })
           .filter(i => i.batteryName && i.unitPrice > 0);
 
-        console.log(`[OCR] Thành công! Đã bóc tách được ${formattedItems.length} dòng sản phẩm bằng ${model}`);
+        console.log(`[OCR] Thành công! Đã bóc tách được ${formattedItems.length} dòng sản phẩm bằng ${model} (Hãng: ${pageDetectedBrand || 'Không rõ'})`);
 
         return {
           success: true,
           items: formattedItems,
+          detectedBrand: pageDetectedBrand,
           sourceType: 'ai_vision',
           modelUsed: model,
           pageCount

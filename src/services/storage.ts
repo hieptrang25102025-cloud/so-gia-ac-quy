@@ -1,4 +1,4 @@
-import { PriceItem, HistoryRecord, SupplierId, Supplier } from '../types';
+import { PriceItem, HistoryRecord, SupplierId, Supplier, BatteryBrand } from '../types';
 import { SUPPLIERS_CONFIG } from '../constants/suppliers';
 import { 
   INITIAL_PRICES_NGUYEN, 
@@ -120,7 +120,7 @@ export class StorageService {
    */
   public applyPriceUpdate(
     supplierId: SupplierId, 
-    newItems: { batteryName: string; unitPrice: number }[],
+    newItems: { batteryName: string; unitPrice: number; brand?: BatteryBrand | null; capacityAh?: number | string }[],
     imageUrl?: string,
     notes?: string
   ): { updatedCount: number; newCount: number } {
@@ -134,17 +134,19 @@ export class StorageService {
     let newCount = 0;
 
     newItems.forEach(item => {
-      // Find matching battery by normalized name
-      const norm = item.batteryName.trim().toLowerCase();
-      const existingIdx = existing.findIndex(e => e.batteryName.trim().toLowerCase() === norm);
+      // Find matching battery by normalized name (NFC normalized)
+      const norm = item.batteryName.normalize('NFC').trim().toLowerCase();
+      const existingIdx = existing.findIndex(e => e.batteryName.normalize('NFC').trim().toLowerCase() === norm);
 
       if (existingIdx >= 0) {
         // Update existing price
         existing[existingIdx] = {
           ...existing[existingIdx],
-          batteryName: item.batteryName.trim(),
+          batteryName: item.batteryName.normalize('NFC').trim(),
           unitPrice: item.unitPrice,
           formattedPrice: formatVND(item.unitPrice),
+          brand: item.brand !== undefined ? item.brand : existing[existingIdx].brand,
+          capacityAh: item.capacityAh !== undefined ? item.capacityAh : existing[existingIdx].capacityAh,
           updatedAt: dateFormatted
         };
         updatedCount++;
@@ -152,9 +154,11 @@ export class StorageService {
         // Append new item
         existing.push({
           id: `${supplierId}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          batteryName: item.batteryName.trim(),
+          batteryName: item.batteryName.normalize('NFC').trim(),
           unitPrice: item.unitPrice,
           formattedPrice: formatVND(item.unitPrice),
+          brand: item.brand,
+          capacityAh: item.capacityAh,
           supplierId,
           updatedAt: dateFormatted
         });

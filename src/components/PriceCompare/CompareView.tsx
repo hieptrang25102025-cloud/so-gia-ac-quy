@@ -33,8 +33,8 @@ export const CompareView: React.FC<Props> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearch);
 
-  // Popular quick pick chips for quick comparison
-  const quickPicks = ['N100', 'N50', 'NS70', 'N25', 'N30', 'N32', 'NS40 R/L', 'N120', 'N150', 'N200', 'DIN 60'];
+  // Popular quick pick chips for quick comparison (includes Brand filters)
+  const quickPicks = ['Eni', 'GS', 'ĐN', 'N100', 'N50', 'NS70', 'N25', 'N30', 'N120', 'DIN 60'];
 
   // Aggregate all unique battery names across all 3 suppliers
   const allUniqueBatteries = useMemo(() => {

@@ -29,6 +29,7 @@ export function parsePrice(input: string | number): number {
 export function normalizeSearch(str: string): string {
   if (!str) return '';
   return str
+    .normalize('NFC')
     .toLowerCase()
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'd')

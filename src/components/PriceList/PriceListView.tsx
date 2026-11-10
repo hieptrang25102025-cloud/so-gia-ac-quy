@@ -38,8 +38,8 @@ export const PriceListView: React.FC<Props> = ({
     return currentPrices.filter(item => normalizeSearch(item.batteryName).includes(term));
   }, [currentPrices, searchTerm]);
 
-  // Quick filter chips for easy 1-touch search
-  const quickFilters = ['Tất cả', 'N100', 'N50', 'NS70', 'N25', 'N30', 'DIN'];
+  // Quick filter chips for easy 1-touch search (includes Brand chips: Eni, GS, ĐN)
+  const quickFilters = ['Tất cả', 'Eni', 'GS', 'ĐN', 'N100', 'N50', 'NS70', 'DIN'];
 
   return (
     <div className="w-full pb-28 space-y-4">

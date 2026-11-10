@@ -1,4 +1,5 @@
 export type SupplierId = 'nguyen' | 'ngoc' | 'nhung';
+export type BatteryBrand = 'Eni' | 'GS' | 'ĐN';
 
 export interface Supplier {
   id: SupplierId;
@@ -19,6 +20,8 @@ export interface PriceItem {
   formattedPrice: string;
   supplierId: SupplierId;
   updatedAt: string;
+  brand?: BatteryBrand | null;
+  capacityAh?: number | string;
   confidence?: 'high' | 'medium' | 'low';
   note?: string;
 }
@@ -38,6 +41,9 @@ export interface HistoryRecord {
 export interface OCRCandidate {
   id: string;
   batteryName: string;
+  rawBatteryName?: string;
+  brand?: BatteryBrand | null;
+  capacityAh?: number | string;
   unitPrice: number;
   formattedPrice: string;
   confidence: 'high' | 'medium' | 'low';

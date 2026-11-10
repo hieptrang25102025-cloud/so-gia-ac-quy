@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { OCRCandidate, SupplierId, Supplier } from '../../types';
+import { OCRCandidate, SupplierId, Supplier, BatteryBrand } from '../../types';
 import { 
   X, AlertTriangle, CheckCircle2, Trash2, Plus, 
   ZoomIn, ZoomOut, RotateCcw, Eye, Sparkles, Check, 
-  Layers, ShieldCheck, Filter
+  Layers, ShieldCheck, Tag, CheckCheck
 } from 'lucide-react';
 import { formatVND, parsePrice } from '../../utils/formatters';
+import { 
+  BRAND_CONFIG, BRAND_LIST, normalizeBrand, 
+  formatBatteryWithBrand, stripBrandSuffix 
+} from '../../utils/brand';
 
 interface Props {
   isOpen: boolean;
@@ -15,7 +19,7 @@ interface Props {
   images: { file: File; base64: string }[];
   sourceType: string;
   onCancel: () => void;
-  onConfirm: (confirmedItems: { batteryName: string; unitPrice: number }[], notes?: string) => void;
+  onConfirm: (confirmedItems: { batteryName: string; unitPrice: number; brand?: BatteryBrand | null; capacityAh?: number | string }[], notes?: string) => void;
 }
 
 export const OCRReviewModal: React.FC<Props> = ({
@@ -28,19 +32,74 @@ export const OCRReviewModal: React.FC<Props> = ({
   onCancel,
   onConfirm,
 }) => {
-  const [candidates, setCandidates] = useState<OCRCandidate[]>(initialCandidates);
+  const [candidates, setCandidates] = useState<OCRCandidate[]>(() => {
+    return initialCandidates.map(c => {
+      const { cleanName, existingBrand } = stripBrandSuffix(c.batteryName);
+      const effectiveBrand = c.brand || existingBrand || null;
+      return {
+        ...c,
+        rawBatteryName: c.rawBatteryName || cleanName,
+        brand: effectiveBrand,
+        batteryName: formatBatteryWithBrand(cleanName, effectiveBrand),
+      };
+    });
+  });
+
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [showOriginalImage, setShowOriginalImage] = useState(true); // Default open to verify 100%
+  const [showOriginalImage, setShowOriginalImage] = useState(true);
   const [imageZoom, setImageZoom] = useState(1);
   const [filterPage, setFilterPage] = useState<number | 'all'>('all');
   const [customNote, setCustomNote] = useState('');
+  const [batchBrand, setBatchBrand] = useState<BatteryBrand | 'none'>('none');
 
   if (!isOpen) return null;
 
   // Handle in-place edit of battery name
   const handleNameChange = (id: string, newName: string) => {
     setCandidates(prev =>
-      prev.map(c => c.id === id ? { ...c, batteryName: newName } : c)
+      prev.map(c => {
+        if (c.id !== id) return c;
+        const { cleanName, existingBrand } = stripBrandSuffix(newName);
+        const effectiveBrand = c.brand || existingBrand || null;
+        return {
+          ...c,
+          rawBatteryName: cleanName,
+          batteryName: formatBatteryWithBrand(cleanName, effectiveBrand),
+        };
+      })
+    );
+  };
+
+  // Change brand for a single candidate
+  const handleBrandChange = (id: string, newBrand: BatteryBrand | null) => {
+    setCandidates(prev =>
+      prev.map(c => {
+        if (c.id !== id) return c;
+        const base = c.rawBatteryName || stripBrandSuffix(c.batteryName).cleanName;
+        return {
+          ...c,
+          brand: newBrand,
+          batteryName: formatBatteryWithBrand(base, newBrand),
+        };
+      })
+    );
+  };
+
+  // Apply a brand to all displayed candidates or all candidates
+  const handleApplyBatchBrand = (brand: BatteryBrand | null) => {
+    setCandidates(prev =>
+      prev.map(c => {
+        // If filtering by page, apply to that page; otherwise apply to all
+        if (filterPage !== 'all' && (c.pageNumber || 1) !== filterPage) {
+          return c;
+        }
+        const base = c.rawBatteryName || stripBrandSuffix(c.batteryName).cleanName;
+        return {
+          ...c,
+          brand,
+          batteryName: formatBatteryWithBrand(base, brand),
+        };
+      })
     );
   };
 
@@ -71,6 +130,8 @@ export const OCRReviewModal: React.FC<Props> = ({
     const newItem: OCRCandidate = {
       id: `manual-${Date.now()}`,
       batteryName: '',
+      rawBatteryName: '',
+      brand: null,
       unitPrice: 1000000,
       formattedPrice: formatVND(1000000),
       confidence: 'high',
@@ -92,7 +153,9 @@ export const OCRReviewModal: React.FC<Props> = ({
       .filter(c => c.batteryName.trim().length > 0 && c.unitPrice > 0)
       .map(c => ({
         batteryName: c.batteryName.trim(),
-        unitPrice: c.unitPrice
+        unitPrice: c.unitPrice,
+        brand: c.brand,
+        capacityAh: c.capacityAh
       }));
 
     if (valid.length === 0) {
@@ -103,6 +166,7 @@ export const OCRReviewModal: React.FC<Props> = ({
     onConfirm(valid, customNote || undefined);
   };
 
+  const unassignedBrandCount = candidates.filter(c => !c.brand).length;
   const suspiciousCount = candidates.filter(c => c.isSuspicious || c.confidence === 'low').length;
 
   return (
@@ -135,11 +199,11 @@ export const OCRReviewModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* 100% Accuracy & Multi-Page View Ribbon */}
+        {/* 100% Accuracy Ribbon */}
         <div className="bg-emerald-50 border-b border-emerald-200 px-4 py-2 flex items-center justify-between text-xs text-emerald-900 font-semibold">
           <div className="flex items-center space-x-1.5">
             <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>Đã đọc trọn vẹn {candidates.length} mã từ {images.length} trang ảnh</span>
+            <span>Đã trích xuất {candidates.length} mã bình từ {images.length} trang ảnh</span>
           </div>
           <button
             type="button"
@@ -151,10 +215,9 @@ export const OCRReviewModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Collapsible High-Resolution Multi-Page Image Viewer with Zoom Controls */}
+        {/* Collapsible High-Resolution Image Viewer */}
         {showOriginalImage && images.length > 0 && (
           <div className="bg-stone-900 border-b border-stone-700 p-2 text-white">
-            {/* Page selection bar + zoom controls */}
             <div className="flex items-center justify-between pb-2 px-1 text-xs">
               <div className="flex items-center space-x-1">
                 <span className="text-stone-400 font-medium">Trang:</span>
@@ -206,7 +269,6 @@ export const OCRReviewModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Scrollable image box */}
             <div className="max-h-44 overflow-auto rounded-xl bg-black/60 flex items-center justify-center p-2 border border-stone-800">
               <img
                 src={images[activeImageIndex].base64}
@@ -218,8 +280,60 @@ export const OCRReviewModal: React.FC<Props> = ({
           </div>
         )}
 
+        {/* Brand Assignment & Quick Batch Bar */}
+        <div className="bg-rose-50/70 border-b border-rose-100 p-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-1.5 text-xs font-bold text-stone-700">
+              <Tag className="w-4 h-4 text-brand-ruby" />
+              <span>Gán đuôi hãng cho cả lô:</span>
+            </div>
+
+            <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => handleApplyBatchBrand('Eni')}
+                className="px-2.5 py-1 rounded-lg bg-red-100 hover:bg-red-200 text-red-900 border border-red-300 text-xs font-bold transition-colors whitespace-nowrap"
+              >
+                + Eni (Enimac)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBatchBrand('GS')}
+                className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 text-xs font-bold transition-colors whitespace-nowrap"
+              >
+                + GS (GS)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBatchBrand('ĐN')}
+                className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 text-xs font-bold transition-colors whitespace-nowrap"
+              >
+                + ĐN (Đồng Nai)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBatchBrand(null)}
+                className="px-2 py-1 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-medium transition-colors whitespace-nowrap"
+                title="Bỏ đuôi hãng"
+              >
+                Không đuôi
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Warning if unassigned brand */}
+        {unassignedBrandCount > 0 && (
+          <div className="mx-3 mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-300 flex items-start space-x-2 text-xs font-semibold text-amber-900">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span>Có <strong>{unassignedBrandCount} bình</strong> chưa gán đuôi hãng. Bạn hãy bấm chọn hãng ở trên để phân biệt (ví dụ Eni, GS, ĐN).</span>
+            </div>
+          </div>
+        )}
+
         {/* Filter per page & Add row strip */}
-        <div className="p-3 bg-stone-50 border-b border-stone-200/80 flex items-center justify-between text-xs sm:text-sm">
+        <div className="px-3 py-2 bg-stone-50 border-b border-stone-200/80 flex items-center justify-between text-xs sm:text-sm">
           {images.length > 1 ? (
             <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar">
               <button
@@ -267,17 +381,7 @@ export const OCRReviewModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Suspicious warning banner if any */}
-        {suspiciousCount > 0 && (
-          <div className="mx-4 mt-3 p-2.5 rounded-xl bg-amber-50 border border-amber-300 flex items-center space-x-2 text-xs font-semibold text-amber-900">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span>
-              Có {suspiciousCount} dòng cần rà soát lại (viền vàng). Vui lòng đối chiếu với ảnh gốc.
-            </span>
-          </div>
-        )}
-
-        {/* Candidate List (Editable Cards with page number tag) */}
+        {/* Candidate List */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
           {displayedCandidates.map((item, idx) => {
             const isAlert = item.isSuspicious || item.confidence === 'low';
@@ -298,6 +402,11 @@ export const OCRReviewModal: React.FC<Props> = ({
                       <label className="text-[10px] font-bold uppercase text-stone-400">
                         Mã {idx + 1}
                       </label>
+                      {item.capacityAh && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                          {item.capacityAh}Ah
+                        </span>
+                      )}
                       {images.length > 1 && (
                         <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
                           Trang {item.pageNumber || 1}
@@ -308,13 +417,50 @@ export const OCRReviewModal: React.FC<Props> = ({
                       type="text"
                       value={item.batteryName}
                       onChange={(e) => handleNameChange(item.id, e.target.value)}
-                      placeholder="Tên bình (ví dụ: N100)"
+                      placeholder="Tên bình (ví dụ: N50 Eni)"
                       className="w-full font-black text-brand-charcoal text-base bg-transparent border-b border-stone-200 focus:border-brand-ruby focus:outline-hidden py-0.5"
                     />
                   </div>
 
+                  {/* Middle: Brand Tag Selector per row */}
+                  <div className="flex items-center space-x-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleBrandChange(item.id, item.brand === 'Eni' ? null : 'Eni')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        item.brand === 'Eni'
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : 'bg-stone-100 text-stone-500 hover:bg-red-50'
+                      }`}
+                    >
+                      Eni
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBrandChange(item.id, item.brand === 'GS' ? null : 'GS')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        item.brand === 'GS'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-stone-100 text-stone-500 hover:bg-blue-50'
+                      }`}
+                    >
+                      GS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBrandChange(item.id, item.brand === 'ĐN' ? null : 'ĐN')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        item.brand === 'ĐN'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-stone-100 text-stone-500 hover:bg-emerald-50'
+                      }`}
+                    >
+                      ĐN
+                    </button>
+                  </div>
+
                   {/* Right: Unit Price Input */}
-                  <div className="w-36 flex-shrink-0">
+                  <div className="w-32 sm:w-36 flex-shrink-0">
                     <label className="block text-[10px] font-bold uppercase text-stone-400 mb-0.5 text-right">
                       Đơn giá (đ)
                     </label>
@@ -331,7 +477,7 @@ export const OCRReviewModal: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => handleDeleteRow(item.id)}
-                    className="p-2 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                    className="p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
                     title="Xóa dòng này"
                   >
                     <Trash2 className="w-4 h-4" />

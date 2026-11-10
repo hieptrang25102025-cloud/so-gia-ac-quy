@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   SupplierId, Supplier, PriceItem, HistoryRecord, 
-  ActiveTab, UserRole, OCRCandidate 
+  ActiveTab, UserRole, OCRCandidate, BatteryBrand 
 } from './types';
 import { storage } from './services/storage';
 import { processQuoteImages, optimizeImage } from './services/ocr';
@@ -175,7 +175,7 @@ export const App: React.FC = () => {
 
   // 3. Admin confirms OCR result
   const handleConfirmOCRUpdate = async (
-    confirmedItems: { batteryName: string; unitPrice: number }[],
+    confirmedItems: { batteryName: string; unitPrice: number; brand?: BatteryBrand | null; capacityAh?: number | string }[],
     notes?: string
   ) => {
     setShowReviewModal(false);

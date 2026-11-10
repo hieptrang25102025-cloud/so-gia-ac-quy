@@ -1,9 +1,11 @@
 import { OCRCandidate } from '../types';
 import { formatVND, parsePrice } from '../utils/formatters';
+import { normalizeBrand, formatBatteryWithBrand } from '../utils/brand';
 
 export interface OCRProcessResult {
   success: boolean;
   candidates: OCRCandidate[];
+  detectedBrand?: string | null;
   error?: string;
   sourceType: 'ai_vision' | 'smart_parser' | 'simulation';
   pageCount: number;
@@ -83,14 +85,23 @@ export async function processQuoteImages(
     if (response.ok) {
       const data = await response.json();
       if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+        const detectedBrand = normalizeBrand(data.detectedBrand);
         return {
           success: true,
+          detectedBrand,
           candidates: data.items.map((item: any, idx: number) => {
             const price = parsePrice(item.unitPrice || item.price);
             const isSuspicious = price < 100000 || price > 15000000 || !item.batteryName;
+            const rawName = cleanBatteryName(item.batteryName || `Bình ${idx + 1}`);
+            const itemBrand = normalizeBrand(item.brand) || detectedBrand;
+            const finalName = formatBatteryWithBrand(rawName, itemBrand);
+
             return {
               id: `ocr-${idx}-${Date.now()}`,
-              batteryName: cleanBatteryName(item.batteryName || `Bình ${idx + 1}`),
+              batteryName: finalName,
+              rawBatteryName: rawName,
+              brand: itemBrand,
+              capacityAh: item.capacityAh || undefined,
               unitPrice: price,
               formattedPrice: formatVND(price),
               confidence: isSuspicious ? 'low' : (item.confidence || 'high'),
@@ -134,14 +145,16 @@ export async function processQuoteImages(
 }
 
 /**
- * Clean battery name to keep only the pure model designation (ignoring dimensions, Ah, STT, company addresses)
+ * Clean battery name to keep only the pure model designation (ignoring dimensions, STT, company addresses)
+ * Preserves important notes like "(Cọc nhỏ)", "(Cọc lớn)"
  */
 export function cleanBatteryName(raw: string): string {
   if (!raw) return '';
   return raw
+    .normalize('NFC')
     .replace(/^\s*\d+[\.\-\s]+/g, '') // remove leading STT e.g. "1. " or "02 - "
-    .replace(/\(.*(?:kích thước|kt|DxRxC|ah|dung lượng|dài|rộng|cao|bảo hành|tháng).*\)/gi, '') // remove parenthesized specs
-    .replace(/(?:kích thước|kt|DxRxC|ah|dung lượng|dài|rộng|cao|bảo hành|tháng).*/gi, '') // remove trailing spec notes
+    .replace(/\(.*(?:kích thước|kt|DxRxC|dài|rộng|cao|bảo hành|tháng).*\)/gi, '') // remove dimension specs
+    .replace(/(?:kích thước|kt|DxRxC|dài|rộng|cao|bảo hành|tháng).*/gi, '') // remove trailing dimension notes
     .replace(/[\(\[\{:\-\s]+$/, '') // remove trailing open bracket or dash
     .replace(/\s+/g, ' ')
     .trim();

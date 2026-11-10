@@ -1,5 +1,5 @@
 import { getSupabase } from './supabaseClient';
-import { Supplier, SupplierId, PriceItem, HistoryRecord } from '../types';
+import { Supplier, SupplierId, PriceItem, HistoryRecord, BatteryBrand } from '../types';
 import { SUPPLIERS_CONFIG } from '../constants/suppliers';
 import { formatVND } from '../utils/formatters';
 
@@ -62,6 +62,8 @@ export const supabaseDb = {
         formattedPrice: row.formatted_price || formatVND(Number(row.unit_price)),
         updatedAt: row.updated_at,
         notes: row.notes || undefined,
+        brand: row.brand || undefined,
+        capacityAh: row.capacity_ah || undefined,
       }));
     } catch (err) {
       console.warn(`Error fetching prices for ${supplierId}:`, err);
@@ -99,6 +101,8 @@ export const supabaseDb = {
             formattedPrice: row.formatted_price || formatVND(Number(row.unit_price)),
             updatedAt: row.updated_at,
             notes: row.notes || undefined,
+            brand: row.brand || undefined,
+            capacityAh: row.capacity_ah || undefined,
           });
         }
       });
@@ -191,7 +195,7 @@ export const supabaseDb = {
   // 6. Save Price Update to Supabase (Admin only)
   async savePriceUpdate(
     supplierId: SupplierId,
-    newItems: { batteryName: string; unitPrice: number }[],
+    newItems: { batteryName: string; unitPrice: number; brand?: BatteryBrand | null; capacityAh?: number | string }[],
     imageUrl?: string,
     notes?: string
   ): Promise<{ success: boolean; error?: string }> {
@@ -222,20 +226,20 @@ export const supabaseDb = {
 
       const existingMap = new Map<string, any>();
       (existingPrices || []).forEach(p => {
-        existingMap.set(p.battery_name.trim().toLowerCase(), p);
+        existingMap.set(p.battery_name.normalize('NFC').trim().toLowerCase(), p);
       });
 
       const upsertPayload: any[] = [];
 
       newItems.forEach(item => {
-        const norm = item.batteryName.trim().toLowerCase();
+        const norm = item.batteryName.normalize('NFC').trim().toLowerCase();
         const existing = existingMap.get(norm);
         const id = existing ? existing.id : `${supplierId}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 
         upsertPayload.push({
           id,
           supplier_id: supplierId,
-          battery_name: item.batteryName.trim(),
+          battery_name: item.batteryName.normalize('NFC').trim(),
           unit_price: item.unitPrice,
           formatted_price: formatVND(item.unitPrice),
           updated_at: dateFormatted,
